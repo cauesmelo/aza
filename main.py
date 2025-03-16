@@ -37,7 +37,7 @@ def ssh_into_vm(resource_group, vm_name):
     subprocess.run(command)
 
 def main():
-    parser = argparse.ArgumentParser(description="Manage Azure VM user and SSH connection")
+    parser = argparse.ArgumentParser()
     subparsers = parser.add_subparsers(dest="command", required=True)
     
     setuser_parser = subparsers.add_parser("setuser")
