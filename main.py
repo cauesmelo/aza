@@ -9,6 +9,40 @@ from rich.console import Console
 
 console = Console()
 
+SSH_KEY_PATH = "~/.ssh/azure_work_key"
+SSH_KEY_PUB_PATH = SSH_KEY_PATH + ".pub"
+AZ_USER = "cauesmelo"
+
+
+def generate_key():
+    key_path = os.path.expanduser(SSH_KEY_PATH)
+    if os.path.exists(key_path):
+        print(f"SSH key already exists at {key_path}.")
+        return
+
+    cmd = ["ssh-keygen", "-t", "rsa", "-b", "4096", "-f", key_path, "-N", ""]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    if result.returncode != 0:
+        print(f"Error generating SSH key: {result.stderr}")
+        sys.exit(1)
+
+    chmod_result = subprocess.run(
+        ["chmod", "600", key_path], capture_output=True, text=True
+    )
+    if chmod_result.returncode != 0:
+        print(f"Error setting permissions on SSH key: {chmod_result.stderr}")
+        sys.exit(1)
+
+    pub_key_path = os.path.expanduser(SSH_KEY_PUB_PATH)
+    chmod_pub_result = subprocess.run(
+        ["chmod", "600", pub_key_path], capture_output=True, text=True
+    )
+    if chmod_pub_result.returncode != 0:
+        print(f"Error setting permissions on SSH public key: {chmod_pub_result.stderr}")
+        sys.exit(1)
+
+    print("SSH key generated and permissions set successfully.")
+
 
 def patched_run(*args, **kwargs):
     if args and isinstance(args[0], list):
@@ -30,7 +64,7 @@ def set_user(resource_group, vm_name):
     if resource_group is None or vm_name is None:
         resource_group, vm_name = select_vm()
 
-    ssh_key_pub = os.path.expanduser("~/.ssh/melocaue_bcg_az_key.pub")
+    ssh_key_pub = os.path.expanduser(SSH_KEY_PUB_PATH)
 
     try:
         with open(ssh_key_pub, "r") as f:
@@ -49,13 +83,11 @@ def set_user(resource_group, vm_name):
         "--name",
         vm_name,
         "--username",
-        "melo.caue@bcg.com",
+        AZ_USER,
         "--ssh-key-value",
         public_key,
     ]
-    print(
-        f"Setting user melo.caue@bcg.com and SSH key for VM {vm_name} in RG {resource_group}"
-    )
+    print(f"Setting user {AZ_USER} and SSH key for VM {vm_name} in RG {resource_group}")
     subprocess.run(command, check=True)
     print("User and SSH key updated successfully.")
 
@@ -127,10 +159,13 @@ def ssh_into_vm(resource_group, vm_name):
         "--name",
         vm_name,
         "--private-key-file",
-        os.path.expanduser("~/.ssh/melocaue_bcg_az_key"),
+        os.path.expanduser(SSH_KEY_PATH),
+        "--local-user",
+        AZ_USER,
         "--",
         "-o PasswordAuthentication=no",
         "-o BatchMode=yes",
+        "-o StrictHostKeyChecking=no",
     ]
     print("SSHing into VM...")
     subprocess.run(
@@ -151,12 +186,16 @@ def main():
     ssh_parser.add_argument("-rg", dest="resource_group")
     ssh_parser.add_argument("-vm", dest="vm_name")
 
+    subparsers.add_parser("genkey")
+
     args = parser.parse_args()
 
     if args.command == "setuser":
         set_user(args.resource_group, args.vm_name)
     elif args.command == "ssh":
         ssh_into_vm(args.resource_group, args.vm_name)
+    elif args.command == "genkey":
+        generate_key()
     else:
         parser.print_help()
 
