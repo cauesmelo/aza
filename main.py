@@ -8,10 +8,28 @@ from rich.table import Table
 from rich.console import Console
 
 console = Console()
-
 SSH_KEY_PATH = "~/.ssh/azure_work_key"
 SSH_KEY_PUB_PATH = SSH_KEY_PATH + ".pub"
+
+
+# Edit this with your user to set in the VMs
 AZ_USER = "cauesmelo"
+
+
+def patched_run(*args, **kwargs):
+    if args and isinstance(args[0], list):
+        cmd = args[0]
+        console.print(f"[dim]Executing: {' '.join(cmd)}[/dim]")
+    return _original_run(*args, **kwargs)
+
+
+_original_run = subprocess.run
+subprocess.run = patched_run
+
+
+def clear():
+    clear_command = "cls" if os.name == "nt" else "clear"
+    os.system(clear_command)
 
 
 def generate_key():
@@ -42,22 +60,6 @@ def generate_key():
         sys.exit(1)
 
     print("SSH key generated and permissions set successfully.")
-
-
-def patched_run(*args, **kwargs):
-    if args and isinstance(args[0], list):
-        cmd = args[0]
-        console.print(f"[dim]Executing: {' '.join(cmd)}[/dim]")
-    return _original_run(*args, **kwargs)
-
-
-_original_run = subprocess.run
-subprocess.run = patched_run
-
-
-def clear():
-    clear_command = "cls" if os.name == "nt" else "clear"
-    os.system(clear_command)
 
 
 def set_user(resource_group, vm_name):
@@ -92,6 +94,25 @@ def set_user(resource_group, vm_name):
     print("User and SSH key updated successfully.")
 
 
+def list_subscriptions():
+    list_command = ["az", "account", "list", "-o", "json"]
+    print("Loading subscriptions, please wait...")
+    result = subprocess.run(list_command, capture_output=True, text=True)
+    if result.returncode != 0:
+        print("Failed to list subscriptions. Check your Azure CLI login/status.")
+        sys.exit(1)
+    try:
+        subscriptions = json.loads(result.stdout)
+    except json.JSONDecodeError:
+        print("Failed to parse subscriptions JSON.")
+        sys.exit(1)
+    if not subscriptions:
+        print("No subscriptions found in your account.")
+        sys.exit(0)
+
+    return subscriptions
+
+
 def list_vms():
     list_command = ["az", "vm", "list", "-o", "json"]
     print("Loading VMs, please wait...")
@@ -111,6 +132,41 @@ def list_vms():
         sys.exit(0)
 
     return vms
+
+
+def select_subscription():
+    subscriptions = list_subscriptions()
+
+    clear()
+
+    table = Table(
+        title="[bold green]Available Subscriptions[/bold green]",
+        show_lines=True,
+    )
+    table.add_column("Index", justify="right", style="cyan")
+    table.add_column("Subscription Name", style="magenta")
+    table.add_column("Subscription ID", style="green")
+
+    for i, sub in enumerate(subscriptions):
+        sub_name = sub.get("name", "Unknown")
+        sub_id = sub.get("id", "Unknown")
+        table.add_row(str(i), sub_name, sub_id)
+
+    console.print(table)
+
+    try:
+        idx = int(input("Select subscription index: ").strip())
+        if idx < 0 or idx >= len(subscriptions):
+            raise ValueError
+    except ValueError:
+        print("Invalid selection.")
+        sys.exit(1)
+
+    clear()
+    print(
+        f"Selected subscription: {subscriptions[idx].get('name')} ({subscriptions[idx].get('id')})"
+    )
+    return subscriptions[idx]
 
 
 def select_vm():
@@ -174,6 +230,18 @@ def ssh_into_vm(resource_group, vm_name):
     )
 
 
+def set_subscription():
+    selected_sub = select_subscription()
+    selected_id = selected_sub.get("id")
+    print(f"Setting subscription to: {selected_sub.get('name')} ({selected_id})")
+    command = ["az", "account", "set", "--subscription", selected_id]
+    result = subprocess.run(command, capture_output=True, text=True)
+    if result.returncode != 0:
+        print(f"Failed to set subscription: {result.stderr}")
+        sys.exit(1)
+    print("Subscription set successfully.")
+
+
 def main():
     parser = argparse.ArgumentParser()
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -187,6 +255,8 @@ def main():
     ssh_parser.add_argument("-vm", dest="vm_name")
 
     subparsers.add_parser("genkey")
+    subparsers.add_parser("setsub")
+    subparsers.add_parser("help")
 
     args = parser.parse_args()
 
@@ -196,6 +266,8 @@ def main():
         ssh_into_vm(args.resource_group, args.vm_name)
     elif args.command == "genkey":
         generate_key()
+    elif args.command == "setsub":
+        set_subscription()
     else:
         parser.print_help()
 
