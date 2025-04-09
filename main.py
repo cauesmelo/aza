@@ -266,6 +266,49 @@ def set_subscription():
     console.print("Subscription set successfully.", style="green")
 
 
+def copy_file(path):
+    resource_group, vm_name = select_vm()
+
+    cmd = [
+        "az",
+        "vm",
+        "list-ip-addresses",
+        "--name",
+        vm_name,
+        "--resource-group",
+        resource_group,
+        "-o",
+        "json",
+    ]
+    result = exec_wait("Fetching VM IP address", cmd, capture_output=True, text=True)
+    if result.returncode != 0:
+        console.print("Failed to fetch VM IP address.", style="red")
+        sys.exit(1)
+
+    try:
+        ip_info = json.loads(result.stdout)
+        ip_address = ip_info[0]["virtualMachine"]["network"]["publicIpAddresses"][0][
+            "ipAddress"
+        ]
+    except (IndexError, KeyError, json.JSONDecodeError):
+        console.print("Could not parse VM IP address.", style="red")
+        sys.exit(1)
+
+    clear()
+
+    destination = os.path.expanduser("~/Downloads/")
+    scp_cmd = [
+        "scp",
+        "-i",
+        os.path.expanduser(SSH_KEY_PATH),
+        "-r",
+        f"{AZ_USER}@{ip_address}:{path}",
+        destination,
+    ]
+    console.print(f"[bold green]Copying '{path}', please wait...[/bold green]")
+    subprocess.run(scp_cmd, check=True)
+
+
 def main():
     parser = argparse.ArgumentParser()
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -278,8 +321,12 @@ def main():
     ssh_parser.add_argument("-rg", dest="resource_group")
     ssh_parser.add_argument("-vm", dest="vm_name")
 
+    scp_parser = subparsers.add_parser("cp")
+    scp_parser.add_argument("path")
+
     subparsers.add_parser("genkey")
     subparsers.add_parser("setsub")
+
     subparsers.add_parser("help")
 
     args = parser.parse_args()
@@ -292,6 +339,8 @@ def main():
         generate_key()
     elif args.command == "setsub":
         set_subscription()
+    elif args.command == "cp":
+        copy_file(args.path)
     else:
         parser.print_help()
 
