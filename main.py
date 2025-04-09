@@ -8,9 +8,8 @@ from rich.console import Console
 import configparser
 
 console = Console()
-
 config = configparser.ConfigParser()
-config.read("config.cfg")
+config.read(os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.cfg"))
 
 SSH_KEY_PATH = config.get("SSH Key Settings", "SSH_KEY_PATH")
 SSH_KEY_PUB_PATH = config.get("SSH Key Settings", "SSH_KEY_PUB_PATH")
