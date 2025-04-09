@@ -17,15 +17,9 @@ SSH_KEY_PUB_PATH = config.get("SSH Key Settings", "SSH_KEY_PUB_PATH")
 AZ_USER = config.get("User Settings", "AZ_USER")
 
 
-def patched_run(*args, **kwargs):
-    if args and isinstance(args[0], list):
-        cmd = args[0]
-        console.print(f"[dim]Executing: {' '.join(cmd)}[/dim]")
-    return _original_run(*args, **kwargs)
-
-
-_original_run = subprocess.run
-subprocess.run = patched_run
+def exec_wait(message, *args, **kwargs):
+    with console.status(f"[bold green]{message}, please wait...[/bold green]"):
+        return subprocess.run(*args, **kwargs)
 
 
 def clear():
@@ -36,31 +30,42 @@ def clear():
 def generate_key():
     key_path = os.path.expanduser(SSH_KEY_PATH)
     if os.path.exists(key_path):
-        print(f"SSH key already exists at {key_path}.")
+        console.print(f"SSH key already exists at {key_path}.", style="yellow")
         return
 
     cmd = ["ssh-keygen", "-t", "rsa", "-b", "4096", "-f", key_path, "-N", ""]
-    result = subprocess.run(cmd, capture_output=True, text=True)
+    result = exec_wait("Generating SSH key", cmd, capture_output=True, text=True)
     if result.returncode != 0:
-        print(f"Error generating SSH key: {result.stderr}")
+        console.print(f"Error generating SSH key: {result.stderr}", style="red")
         sys.exit(1)
 
-    chmod_result = subprocess.run(
-        ["chmod", "600", key_path], capture_output=True, text=True
+    chmod_result = exec_wait(
+        "Setting permissions on private SSH key",
+        ["chmod", "600", key_path],
+        capture_output=True,
+        text=True,
     )
     if chmod_result.returncode != 0:
-        print(f"Error setting permissions on SSH key: {chmod_result.stderr}")
+        console.print(
+            f"Error setting permissions on SSH key: {chmod_result.stderr}", style="red"
+        )
         sys.exit(1)
 
     pub_key_path = os.path.expanduser(SSH_KEY_PUB_PATH)
-    chmod_pub_result = subprocess.run(
-        ["chmod", "600", pub_key_path], capture_output=True, text=True
+    chmod_pub_result = exec_wait(
+        "Setting permissions on public SSH key",
+        ["chmod", "600", pub_key_path],
+        capture_output=True,
+        text=True,
     )
     if chmod_pub_result.returncode != 0:
-        print(f"Error setting permissions on SSH public key: {chmod_pub_result.stderr}")
+        console.print(
+            f"Error setting permissions on SSH public key: {chmod_pub_result.stderr}",
+            style="red",
+        )
         sys.exit(1)
 
-    print("SSH key generated and permissions set successfully.")
+    console.print("SSH key generated and permissions set successfully.", style="green")
 
 
 def set_user(resource_group, vm_name):
@@ -73,7 +78,9 @@ def set_user(resource_group, vm_name):
         with open(ssh_key_pub, "r") as f:
             public_key = f.read().strip()
     except Exception as e:
-        print(f"Error reading SSH public key from {ssh_key_pub}: {e}")
+        console.print(
+            f"Error reading SSH public key from {ssh_key_pub}: {e}", style="red"
+        )
         sys.exit(1)
 
     command = [
@@ -90,25 +97,34 @@ def set_user(resource_group, vm_name):
         "--ssh-key-value",
         public_key,
     ]
-    print(f"Setting user {AZ_USER} and SSH key for VM {vm_name} in RG {resource_group}")
-    subprocess.run(command, check=True)
-    print("User and SSH key updated successfully.")
+    exec_wait(
+        f"Setting user {AZ_USER} and SSH key for VM {vm_name} in RG {resource_group}",
+        command,
+        check=True,
+    )
+    console.print("User and SSH key updated successfully.", style="green")
 
 
 def list_subscriptions():
     list_command = ["az", "account", "list", "-o", "json"]
-    print("Loading subscriptions, please wait...")
-    result = subprocess.run(list_command, capture_output=True, text=True)
+
+    result = exec_wait(
+        "Listing subscriptions", list_command, capture_output=True, text=True
+    )
+
     if result.returncode != 0:
-        print("Failed to list subscriptions. Check your Azure CLI login/status.")
+        console.print(
+            "Failed to list subscriptions. Check your Azure CLI login/status.",
+            style="red",
+        )
         sys.exit(1)
     try:
         subscriptions = json.loads(result.stdout)
     except json.JSONDecodeError:
-        print("Failed to parse subscriptions JSON.")
+        console.print("Failed to parse subscriptions JSON.", style="red")
         sys.exit(1)
     if not subscriptions:
-        print("No subscriptions found in your account.")
+        console.print("No subscriptions found in your account.", style="red")
         sys.exit(0)
 
     return subscriptions
@@ -116,20 +132,22 @@ def list_subscriptions():
 
 def list_vms():
     list_command = ["az", "vm", "list", "-o", "json"]
-    print("Loading VMs, please wait...")
-    result = subprocess.run(list_command, capture_output=True, text=True)
+    result = exec_wait("Listing VMs", list_command, capture_output=True, text=True)
+
     if result.returncode != 0:
-        print("Failed to list VMs. Check your Azure CLI login/status.")
+        console.print(
+            "Failed to list VMs. Check your Azure CLI login/status.", style="red"
+        )
         sys.exit(1)
 
     try:
         vms = json.loads(result.stdout)
     except json.JSONDecodeError:
-        print("Failed to parse JSON output from `az vm list`.")
+        console.print("Failed to parse JSON output from `az vm list`.", style="red")
         sys.exit(1)
 
     if not vms:
-        print("No VMs found in your subscription.")
+        console.print("No VMs found in your subscription.", style="red")
         sys.exit(0)
 
     return vms
@@ -137,7 +155,6 @@ def list_vms():
 
 def select_subscription():
     subscriptions = list_subscriptions()
-
     clear()
 
     table = Table(
@@ -161,12 +178,12 @@ def select_subscription():
         if idx < 0 or idx >= len(subscriptions):
             raise ValueError
     except ValueError:
-        print("Invalid selection.")
+        console.print("Invalid selection.", style="red")
         sys.exit(1)
 
     clear()
-    print(
-        f"Selected subscription: {subscriptions[idx].get('name')} ({subscriptions[idx].get('id')})"
+    console.print(
+        f"[blue]Selected subscription:[/blue] {subscriptions[idx].get('name')} ({subscriptions[idx].get('id')})"
     )
     return subscriptions[idx]
 
@@ -194,14 +211,14 @@ def select_vm():
         if selected_index < 0 or selected_index >= len(vms):
             raise ValueError
     except ValueError:
-        print("Invalid selection.")
+        console.print("Invalid selection.", style="yellow")
         sys.exit(1)
 
     clear()
     selected_vm = vms[selected_index]
     selected_rg = selected_vm["resourceGroup"]
     selected_name = selected_vm["name"]
-    print(f"\nSelected VM: {selected_name} (RG: {selected_rg})")
+    console.print(f"\n[blue]Selected VM:[/blue] {selected_name} (RG: {selected_rg})")
     return selected_rg, selected_name
 
 
@@ -226,7 +243,8 @@ def ssh_into_vm(resource_group, vm_name):
         "-o BatchMode=yes",
         "-o StrictHostKeyChecking=no",
     ]
-    print("SSHing into VM...")
+
+    console.print(f"[blue]Executing:[/blue] {' '.join(command)}")
     subprocess.run(
         command,
         check=True,
@@ -236,13 +254,17 @@ def ssh_into_vm(resource_group, vm_name):
 def set_subscription():
     selected_sub = select_subscription()
     selected_id = selected_sub.get("id")
-    print(f"Setting subscription to: {selected_sub.get('name')} ({selected_id})")
     command = ["az", "account", "set", "--subscription", selected_id]
-    result = subprocess.run(command, capture_output=True, text=True)
+    result = exec_wait(
+        f"Setting subscription to: {selected_sub.get('name')} ({selected_id})",
+        command,
+        capture_output=True,
+        text=True,
+    )
     if result.returncode != 0:
-        print(f"Failed to set subscription: {result.stderr}")
+        console.print(f"Failed to set subscription: {result.stderr}", style="red")
         sys.exit(1)
-    print("Subscription set successfully.")
+    console.print("Subscription set successfully.", style="green")
 
 
 def main():
@@ -279,4 +301,4 @@ if __name__ == "__main__":
     try:
         main()
     except KeyboardInterrupt:
-        print("\nCancelled.")
+        console.print("\nCancelled.", style="red")
