@@ -40,7 +40,7 @@ Aza supports the following commands:
   ```
 
 - **setuser:**  
-  Updates or create the user on a VM with the key specified on main.py
+  Updates or create the user on a VM with the key specified on settings.cfg
 
   ```bash
   aza setuser
