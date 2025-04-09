@@ -1,4 +1,3 @@
-#!/Users/melocaue/devpy/aza/.venv/bin/python
 import sys
 import argparse
 import subprocess
@@ -6,14 +5,16 @@ import os
 import json
 from rich.table import Table
 from rich.console import Console
+import configparser
 
 console = Console()
-SSH_KEY_PATH = "~/.ssh/azure_work_key"
-SSH_KEY_PUB_PATH = SSH_KEY_PATH + ".pub"
 
+config = configparser.ConfigParser()
+config.read("config.cfg")
 
-# Edit this with your user to set in the VMs
-AZ_USER = "cauesmelo"
+SSH_KEY_PATH = config.get("SSH Key Settings", "SSH_KEY_PATH")
+SSH_KEY_PUB_PATH = config.get("SSH Key Settings", "SSH_KEY_PUB_PATH")
+AZ_USER = config.get("User Settings", "AZ_USER")
 
 
 def patched_run(*args, **kwargs):
@@ -155,6 +156,7 @@ def select_subscription():
     console.print(table)
 
     try:
+        console.print("[dim]Press Ctrl+C to cancel[/dim]\n")
         idx = int(input("Select subscription index: ").strip())
         if idx < 0 or idx >= len(subscriptions):
             raise ValueError
@@ -187,6 +189,7 @@ def select_vm():
     console.print(table)
 
     try:
+        console.print("[dim]Press Ctrl+C to cancel[/dim]\n")
         selected_index = int(input("VM Index to ssh: ").strip())
         if selected_index < 0 or selected_index >= len(vms):
             raise ValueError
