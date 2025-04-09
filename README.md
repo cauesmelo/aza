@@ -55,6 +55,13 @@ Aza supports the following commands:
 
 - **setsub:**  
   List azure subscriptions for selection and set the active subscription.
+
   ```bash
-  python main.py setsub
+  aza setsub
+  ```
+
+- **cp:**  
+  Copy content from an Azure VM to you `~Downloads` folder
+  ```bash
+  aza cp /path/in/vm/
   ```
