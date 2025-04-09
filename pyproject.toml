@@ -1,10 +1,7 @@
 [project]
 name = "aza"
 version = "0.1.0"
-description = "Add your description here"
+description = "AZure Alias is a tiny Azure CLI helper for boring tasks"
 readme = "README.md"
 requires-python = ">=3.13.2"
-dependencies = [
-    "rich>=13.9.4",
-    "ruff>=0.11.0",
-]
+dependencies = ["rich>=13.9.4", "ruff>=0.11.0"]
